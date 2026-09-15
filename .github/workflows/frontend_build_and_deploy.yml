@@ -179,7 +179,9 @@ jobs:
 
   cleanup-artifacts:
     runs-on: ubuntu-22.04
-    needs: [ build ]
+    needs: [ build, bootstrap, deploy ]
+    env:
+      S3_ARTIFACT_BUCKET: ${{ needs.bootstrap.outputs.s3_artifact_bucket }}
     permissions:
       id-token: write
       contents: read
@@ -190,4 +192,4 @@ jobs:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/cad-github-actions-role
           aws-region: ${{ inputs.aws_region }}
       - name: Delete old versions from S3 bucket
-        run: aws s3 ls s3://${S3_ARTIFACT_BUCKET}/ | sort -rn | awk -v s3_url="s3://${S3_ARTIFACT_BUCKET}/" '$4 ~ /${{ inputs.app_name }}-/ {print s3_url $4;}' | tee /${{ inputs.github_env }}/stderr | tail -n +21 | xargs -r -n 1 aws s3 rm
+        run: aws s3 ls "s3://${S3_ARTIFACT_BUCKET}/" | sort -rn | awk -v s3_url="s3://${S3_ARTIFACT_BUCKET}/" '$4 ~ /${{ inputs.app_name }}-/ {print s3_url $4;}' | tee /dev/stderr | tail -n +21 | xargs -r -n 1 aws s3 rm
