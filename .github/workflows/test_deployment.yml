@@ -11,16 +11,6 @@ on:
         description: "Environment"
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      execution-environment:
-        type: choice
-        description: "Environment"
-        required: true
-        default: 'BETA'
-        options:
-        - BETA
-        - PROD
 
 jobs:
   deployment-tests:
