@@ -1,0 +1,129 @@
+name: Get backend update-config inputs
+
+on:
+  workflow_call:
+    inputs:
+      env_type:
+        description: "Environment type, e.g. beta or prod"
+        required: true
+        type: string
+      aws_parameters_path:
+        description: "Optional explicit path to AWS params JSON file. Defaults to aws/<env_type>.json"
+        required: false
+        default: ""
+        type: string
+      github_env:
+        description: "Optional GitHub environment name override. Defaults to env_type"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      account_type:
+        description: "Resolved account type"
+        value: ${{ jobs.resolve.outputs.account_type }}
+      app_name:
+        description: "Resolved application name"
+        value: ${{ jobs.resolve.outputs.app_name }}
+      aws_account_id:
+        description: "Resolved AWS account ID"
+        value: ${{ jobs.resolve.outputs.aws_account_id }}
+      aws_region:
+        description: "Resolved AWS region"
+        value: ${{ jobs.resolve.outputs.aws_region }}
+      env_type:
+        description: "Resolved environment type"
+        value: ${{ jobs.resolve.outputs.env_type }}
+      github_env:
+        description: "Resolved GitHub environment"
+        value: ${{ jobs.resolve.outputs.github_env }}
+      aws_parameters:
+        description: "Resolved AWS parameters file stem"
+        value: ${{ jobs.resolve.outputs.aws_parameters }}
+      aws_parameters_path:
+        description: "Resolved AWS parameters file path"
+        value: ${{ jobs.resolve.outputs.aws_parameters_path }}
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      account_type: ${{ steps.resolve.outputs.account_type }}
+      app_name: ${{ steps.resolve.outputs.app_name }}
+      aws_account_id: ${{ steps.resolve.outputs.aws_account_id }}
+      aws_region: ${{ steps.resolve.outputs.aws_region }}
+      env_type: ${{ steps.resolve.outputs.env_type }}
+      github_env: ${{ steps.resolve.outputs.github_env }}
+      aws_parameters: ${{ steps.resolve.outputs.aws_parameters }}
+      aws_parameters_path: ${{ steps.resolve.outputs.aws_parameters_path }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: resolve
+        env:
+          ENV_TYPE: ${{ inputs.env_type }}
+          AWS_PARAMETERS_PATH: ${{ inputs.aws_parameters_path }}
+          GITHUB_ENV_OVERRIDE: ${{ inputs.github_env }}
+        run: |
+          set -euo pipefail
+
+          params_path="$AWS_PARAMETERS_PATH"
+          if [ -z "$params_path" ]; then
+            params_path="aws/${ENV_TYPE}.json"
+          fi
+
+          if [ ! -f "$params_path" ]; then
+            echo "AWS parameters file not found: $params_path" >&2
+            exit 1
+          fi
+
+          if jq -e 'type == "array"' "$params_path" >/dev/null; then
+            parsed="$(jq 'map(split("=") | {(.[0] | tostring): .[1]}) | add' < "$params_path")"
+          elif jq -e 'type == "object"' "$params_path" >/dev/null; then
+            parsed="$(cat "$params_path")"
+          else
+            echo "Unsupported params file format for $params_path. Expected array or object JSON." >&2
+            exit 1
+          fi
+
+          account_type="$(jq -r '.accountType // .account_type // empty' <<<"$parsed")"
+          app_name="$(jq -r '.appName // .app_name // empty' <<<"$parsed")"
+          aws_account_id="$(jq -r '.awsAccountId // .aws_account_id // empty' <<<"$parsed")"
+          aws_region="$(jq -r '.awsRegion // .aws_region // empty' <<<"$parsed")"
+          env_type="$(jq -r '.envType // .env_type // empty' <<<"$parsed")"
+
+          if [ -z "$env_type" ]; then
+            env_type="$ENV_TYPE"
+          fi
+
+          for pair in \
+            "account_type:$account_type" \
+            "app_name:$app_name" \
+            "aws_account_id:$aws_account_id" \
+            "aws_region:$aws_region" \
+            "env_type:$env_type"
+          do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [ -z "$value" ]; then
+              echo "Missing required value '$name' in $params_path" >&2
+              exit 1
+            fi
+          done
+
+          github_env="$GITHUB_ENV_OVERRIDE"
+          if [ -z "$github_env" ]; then
+            github_env="$env_type"
+          fi
+
+          aws_parameters_file="$(basename "$params_path")"
+          aws_parameters="${aws_parameters_file%.json}"
+
+          {
+            printf 'account_type=%s\n' "$account_type"
+            printf 'app_name=%s\n' "$app_name"
+            printf 'aws_account_id=%s\n' "$aws_account_id"
+            printf 'aws_region=%s\n' "$aws_region"
+            printf 'env_type=%s\n' "$env_type"
+            printf 'github_env=%s\n' "$github_env"
+            printf 'aws_parameters=%s\n' "$aws_parameters"
+            printf 'aws_parameters_path=%s\n' "$params_path"
+          } >> "$GITHUB_OUTPUT"

@@ -1,0 +1,138 @@
+name: Delete Stack
+run-name: "Delete ${{ inputs.stack_prefix }} stacks on ${{ inputs.region }}"
+
+on:
+  workflow_call:
+    inputs:
+      stack_prefix:
+        description: "Prefix of stacks to remove"
+        required: true
+        type: string
+      aws_account_id:
+        description: "AWS account ID"
+        required: true
+        type: string
+      region:
+        description: "AWS region"
+        required: false
+        default: "eu-west-1"
+        type: string
+      aws_role_name:
+        description: "Role name to assume in the target account"
+        required: false
+        default: "cad-github-actions-role"
+        type: string
+      frontend_export_suffix:
+        description: "CloudFormation export suffix for frontend app bucket"
+        required: false
+        default: "frontend-app-bucket-name"
+        type: string
+      backend_export_suffix:
+        description: "CloudFormation export suffix for backend app bucket"
+        required: false
+        default: "backend-app-bucket-upload"
+        type: string
+      bootstrap_export_suffix:
+        description: "CloudFormation export suffix for bootstrap dist bucket"
+        required: false
+        default: "bootstrap-dist-bucket-name"
+        type: string
+      allow_prod:
+        description: "Allow deleting production-like stack prefixes"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  preflight:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Validate inputs
+        env:
+          STACK_PREFIX: ${{ inputs.stack_prefix }}
+          ALLOW_PROD: ${{ inputs.allow_prod }}
+        run: |
+          if [ -z "$STACK_PREFIX" ]; then
+            echo "stack_prefix must not be empty" >&2
+            exit 1
+          fi
+
+          if [ "$ALLOW_PROD" != "true" ] && echo "$STACK_PREFIX" | grep -qi 'prod'; then
+            echo "Refusing to delete production-like stack prefix without allow_prod=true" >&2
+            exit 1
+          fi
+
+  frontend:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    needs: [preflight]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
+          aws-region: ${{ inputs.region }}
+      - name: Empty frontend bucket
+        env:
+          EXPORT_NAME: ${{ format('{0}-{1}', inputs.stack_prefix, inputs.frontend_export_suffix) }}
+        run: |
+          S3_BUCKET=$(aws cloudformation list-exports --query "Exports[?Name=='${EXPORT_NAME}'].Value" --output text)
+          if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "None" ]; then
+            aws s3 rm "s3://${S3_BUCKET}" --recursive
+          else
+            echo "No frontend bucket export found for ${EXPORT_NAME}, skipping bucket empty."
+          fi
+      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-frontend
+      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-frontend
+
+  backend:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    needs: [preflight]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
+          aws-region: ${{ inputs.region }}
+      - name: Empty backend upload bucket
+        env:
+          EXPORT_NAME: ${{ format('{0}-{1}', inputs.stack_prefix, inputs.backend_export_suffix) }}
+        run: |
+          S3_BUCKET=$(aws cloudformation list-exports --query "Exports[?Name=='${EXPORT_NAME}'].Value" --output text)
+          if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "None" ]; then
+            aws s3 rm "s3://${S3_BUCKET}" --recursive
+          else
+            echo "No backend bucket export found for ${EXPORT_NAME}, skipping bucket empty."
+          fi
+      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-backend
+      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-backend
+
+  bootstrap:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    needs: [frontend, backend]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
+          aws-region: ${{ inputs.region }}
+      - name: Empty bootstrap dist bucket
+        env:
+          EXPORT_NAME: ${{ format('{0}-{1}', inputs.stack_prefix, inputs.bootstrap_export_suffix) }}
+        run: |
+          S3_BUCKET=$(aws cloudformation list-exports --query "Exports[?Name=='${EXPORT_NAME}'].Value" --output text)
+          if [ -n "$S3_BUCKET" ] && [ "$S3_BUCKET" != "None" ]; then
+            aws s3 rm "s3://${S3_BUCKET}" --recursive
+          else
+            echo "No bootstrap bucket export found for ${EXPORT_NAME}, skipping bucket empty."
+          fi
+      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-bootstrap
+      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-bootstrap
