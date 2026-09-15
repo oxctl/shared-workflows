@@ -26,7 +26,7 @@ Call reusable workflows from app repo.
 ```yaml
 jobs:
   post-comment:
-    uses: oxctl/shared-workflows/.github/workflows/ado_comment.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/ado_comment.yml@master
     with:
       ado_organization: oxforduniversity
       ado_project: Canvas
@@ -40,7 +40,7 @@ jobs:
 ```yaml
 jobs:
   call-frontend-build-and-deploy:
-    uses: oxctl/shared-workflows/.github/workflows/frontend_build_and_deploy.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/frontend_build_and_deploy.yml@master
     with:
       account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
       app_name: ${{ fromJSON(needs.aws-params.outputs.json).appName }}
@@ -55,7 +55,7 @@ jobs:
     secrets: inherit
 
   call-backend-build-and-deploy:
-    uses: oxctl/shared-workflows/.github/workflows/backend_build_and_deploy.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/backend_build_and_deploy.yml@master
     with:
       account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
       app_name: ${{ fromJSON(needs.aws-params.outputs.json).appName }}
@@ -69,7 +69,7 @@ jobs:
     secrets: inherit
 
   call-update-config:
-    uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@master
     needs: [aws-params, call-frontend-build-and-deploy, call-backend-build-and-deploy]
     with:
       account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
@@ -81,7 +81,7 @@ jobs:
     secrets: inherit
 
   call-deployment-tests:
-    uses: oxctl/shared-workflows/.github/workflows/test_deployment.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/test_deployment.yml@master
     needs: [aws-params, call-frontend-build-and-deploy, call-backend-build-and-deploy, call-update-config]
     with:
       execution-environment: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
@@ -101,7 +101,7 @@ on:
 
 jobs:
   call-update-config:
-    uses: oxctl/shared-workflows/.github/workflows/update-config-fe.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/update-config-fe.yml@master
     with:
       env_type: ${{ inputs.env_type }}
 ```
@@ -119,13 +119,13 @@ on:
 
 jobs:
   resolve-inputs:
-    uses: oxctl/shared-workflows/.github/workflows/get-update-config-be-inputs.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/get-update-config-be-inputs.yml@master
     with:
       env_type: ${{ inputs.env_type }}
 
   call-update-config:
     needs: [resolve-inputs]
-    uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@master
     with:
       account_type: ${{ needs.resolve-inputs.outputs.account_type }}
       app_name: ${{ needs.resolve-inputs.outputs.app_name }}
@@ -148,7 +148,7 @@ on:
 
 jobs:
   frontend-ci:
-    uses: oxctl/shared-workflows/.github/workflows/frontend_ci.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/frontend_ci.yml@master
     with:
       working_directory: frontend
       node_version_file: frontend/.nvmrc
@@ -166,7 +166,7 @@ on:
 
 jobs:
   backend-ci:
-    uses: oxctl/shared-workflows/.github/workflows/backend_ci.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/backend_ci.yml@master
     with:
       working_directory: backend
       java_version_file: backend/.java-version
@@ -181,7 +181,7 @@ on:
 
 jobs:
   aws-ci:
-    uses: oxctl/shared-workflows/.github/workflows/aws_ci.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/aws_ci.yml@master
     with:
       aws_region: eu-west-1
       aws_account_id: 730335587339
@@ -206,10 +206,10 @@ on:
 
 jobs:
   delete-stack:
-    uses: oxctl/shared-workflows/.github/workflows/delete_stack.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/delete_stack.yml@master
     with:
-      stack_prefix: ${{ inputs.stack-prefix }}
-      aws_account_id: ${{ inputs.account-id }}
+      stack_prefix: ${{ inputs['stack-prefix'] }}
+      aws_account_id: ${{ inputs['account-id'] }}
       region: ${{ inputs.region }}
 ```
 
@@ -221,7 +221,7 @@ on:
 
 jobs:
   create-release-pr:
-    uses: oxctl/shared-workflows/.github/workflows/release.yml@main
+    uses: oxctl/shared-workflows/.github/workflows/release.yml@master
     with:
       base_branch: release
       head_branch: master

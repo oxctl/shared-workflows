@@ -192,7 +192,17 @@ jobs:
         continue-on-error: true
       - run: aws logs put-retention-policy --log-group-name "/aws/rds/instance/${{ env.DB_NAME }}/slowquery" --retention-in-days 90
         continue-on-error: true
-      - run: echo VERSION_REF=$(aws cloudformation list-exports --query "Exports[?Name=='${{ env.APP_NAME }}-${{ env.ENV_TYPE }}-${{ env.ACCOUNT_TYPE }}-backend-version'].Value" --output text) | tee -a $GITHUB_ENV
-      - run: echo RUNNING_VERSION_REF=$(aws elasticbeanstalk describe-environments | jq -r '.Environments | map(select(.EnvironmentName == "${{ env.APP_NAME }}-${{ env.ENV_TYPE }}")) | .[] | .VersionLabel') | tee -a $GITHUB_ENV
+      - run: echo VERSION_REF=$(aws cloudformation list-exports --query "Exports[?Name=='${{ inputs.app_name }}-${{ inputs.env_type }}-${{ inputs.account_type }}-backend-version'].Value" --output text) | tee -a $GITHUB_ENV
+      - run: echo RUNNING_VERSION_REF=$(aws elasticbeanstalk describe-environments --query "Environments[?EnvironmentName=='${{ inputs.app_name }}-${{ inputs.env_type }}'] | [0].VersionLabel" --output text) | tee -a $GITHUB_ENV
+      - run: |
+          if [ -z "${VERSION_REF}" ] || [ "${VERSION_REF}" = "None" ]; then
+            echo "Unable to resolve deployed backend version reference" >&2
+            exit 1
+          fi
+
+          if [ -z "${RUNNING_VERSION_REF}" ] || [ "${RUNNING_VERSION_REF}" = "None" ]; then
+            echo "Unable to resolve running backend version reference" >&2
+            exit 1
+          fi
       - if: env.VERSION_REF != env.RUNNING_VERSION_REF
         run: echo "current version does not match deployed version"; exit 1

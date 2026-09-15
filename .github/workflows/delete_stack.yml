@@ -57,6 +57,11 @@ jobs:
             exit 1
           fi
 
+          if ! echo "$STACK_PREFIX" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'; then
+            echo "stack_prefix must match ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$" >&2
+            exit 1
+          fi
+
           if [ "$ALLOW_PROD" != "true" ] && echo "$STACK_PREFIX" | grep -qi 'prod'; then
             echo "Refusing to delete production-like stack prefix without allow_prod=true" >&2
             exit 1
@@ -84,8 +89,8 @@ jobs:
           else
             echo "No frontend bucket export found for ${EXPORT_NAME}, skipping bucket empty."
           fi
-      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-frontend
-      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-frontend
+      - run: aws cloudformation delete-stack --stack-name "${{ inputs.stack_prefix }}-frontend"
+      - run: aws cloudformation wait stack-delete-complete --stack-name "${{ inputs.stack_prefix }}-frontend"
 
   backend:
     runs-on: ubuntu-22.04
@@ -109,8 +114,8 @@ jobs:
           else
             echo "No backend bucket export found for ${EXPORT_NAME}, skipping bucket empty."
           fi
-      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-backend
-      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-backend
+      - run: aws cloudformation delete-stack --stack-name "${{ inputs.stack_prefix }}-backend"
+      - run: aws cloudformation wait stack-delete-complete --stack-name "${{ inputs.stack_prefix }}-backend"
 
   bootstrap:
     runs-on: ubuntu-22.04
@@ -134,5 +139,5 @@ jobs:
           else
             echo "No bootstrap bucket export found for ${EXPORT_NAME}, skipping bucket empty."
           fi
-      - run: aws cloudformation delete-stack --stack-name ${{ inputs.stack_prefix }}-bootstrap
-      - run: aws cloudformation wait stack-delete-complete --stack-name ${{ inputs.stack_prefix }}-bootstrap
+      - run: aws cloudformation delete-stack --stack-name "${{ inputs.stack_prefix }}-bootstrap"
+      - run: aws cloudformation wait stack-delete-complete --stack-name "${{ inputs.stack_prefix }}-bootstrap"

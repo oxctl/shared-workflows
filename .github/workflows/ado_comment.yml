@@ -11,6 +11,10 @@ on:
         description: "Azure DevOps project name"
         required: true
         type: string
+    outputs:
+      api-response:
+        description: "API response from post-ado-comment-action"
+        value: ${{ jobs.post-comment.outputs.api-response }}
     secrets:
       ado_username:
         required: true
@@ -22,6 +26,8 @@ jobs:
     # Only run when the caller workflow is handling a merged pull request.
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    outputs:
+      api-response: ${{ steps.post-ado-comment.outputs.api-response }}
     steps:
       - name: Post comment to the ADO work item
         id: post-ado-comment
@@ -31,5 +37,3 @@ jobs:
           ado-project: ${{ inputs.ado_project }}
           ado-username: ${{ secrets.ado_username }}
           ado-personal-token: ${{ secrets.ado_personal_token }}
-      - name: Get the API response output
-        run: echo "${{ steps.post-ado-comment.outputs.api-response }}"
