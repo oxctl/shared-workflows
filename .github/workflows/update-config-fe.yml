@@ -1,0 +1,65 @@
+name: Update tool configuration (frontend)
+
+on:
+  workflow_call:
+    inputs:
+      env_type:
+        description: "Environment type, e.g. beta or prod"
+        required: true
+        type: string
+      github_env:
+        description: "GitHub environment name. Defaults to env_type when omitted."
+        required: false
+        default: ""
+        type: string
+      tool_config_path:
+        description: "Optional path to the concrete tool config file. Defaults to tool-config/<env_type>.json"
+        required: false
+        default: ""
+        type: string
+      timeout_minutes:
+        description: "Job timeout in minutes"
+        required: false
+        default: 10
+        type: number
+    outputs:
+      external-tool-id:
+        description: "External tool ID returned by lti-auto-configuration-action"
+        value: ${{ jobs.update.outputs.external-tool-id }}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    environment: ${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
+    permissions:
+      contents: read
+    outputs:
+      external-tool-id: ${{ steps.lti.outputs.external-tool-id }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Prepare tool config
+        env:
+          ENV_TYPE: ${{ inputs.env_type }}
+          TOOL_CONFIG_PATH: ${{ inputs.tool_config_path }}
+        run: |
+          set -euo pipefail
+          config_path="$TOOL_CONFIG_PATH"
+          if [ -z "$config_path" ]; then
+            config_path="tool-config/${ENV_TYPE}.json"
+          fi
+          if [ ! -f "$config_path" ]; then
+            echo "Tool config file not found: $config_path" >&2
+            exit 1
+          fi
+          cp "$config_path" tool-config/default.json
+      - name: Deploy tool configuration
+        id: lti
+        uses: oxctl/lti-auto-configuration-action@v1
+        with:
+          mode: deploy
+          canvas-url: ${{ vars.CANVAS_HOST }}
+          tool-support-url: ${{ vars.TOOL_SUPPORT_URL }}
+          canvas-token: ${{ secrets.CANVAS_TOKEN }}
+          tool-support-username: ${{ secrets.TOOL_SUPPORT_USERNAME }}
+          tool-support-password: ${{ secrets.TOOL_SUPPORT_PASSWORD }}

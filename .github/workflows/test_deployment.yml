@@ -1,0 +1,48 @@
+# This waits for the backend to be available and then performs the deployment tests.
+# The deployment tests are available in the 'deployment' folder in the root of the project.
+
+name: Test Deployment
+run-name: "Test deployment for the  ${{ inputs['execution-environment'] }} environment"
+
+on:
+  workflow_call:
+    inputs:
+      execution-environment:
+        description: "Environment"
+        required: true
+        type: string
+
+jobs:
+  deployment-tests:
+    # Only run the checks when on the default branch
+    if: github.ref_name == github.event.repository.default_branch || github.ref_name == 'release'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    environment: ${{ inputs['execution-environment'] }}
+    env:
+      CANVAS_HOST: ${{ vars.CANVAS_HOST }}
+      OAUTH_TOKEN: ${{ secrets.DEPLOYMENT_TESTS_OAUTH_TOKEN }}
+      TEST_PATH: ${{ vars.DEPLOYMENT_TEST_PATH }}
+      BACKEND_URL: ${{ vars.BACKEND_URL }}
+    defaults:
+      run:
+        working-directory: deployment
+    steps:
+      - uses: actions/checkout@v6
+      - name: Wait the backend to startup up and serve the index
+        run: curl -I --show-error --silent --retry 10 --retry-connrefused --retry-delay 10 ${{ env.BACKEND_URL }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: 'deployment/.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+      - run: npm ci
+      - run: npm run install-browsers
+      - run: npm test
+      - name: Upload test-results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ${{ github.event.repository.name }}-test-results-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ./deployment/playwright-report/
+          retention-days: 1

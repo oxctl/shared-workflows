@@ -1,0 +1,66 @@
+name: Create release PR
+
+on:
+  workflow_call:
+    inputs:
+      base_branch:
+        description: "Base branch for the release pull request"
+        required: false
+        default: "release"
+        type: string
+      head_branch:
+        description: "Head branch for the release pull request"
+        required: false
+        default: "master"
+        type: string
+      label:
+        description: "Label to apply to the pull request"
+        required: false
+        default: "release"
+        type: string
+      title:
+        description: "Pull request title"
+        required: false
+        default: "Release Request"
+        type: string
+      body:
+        description: "Pull request body"
+        required: false
+        default: "Created by GitHub Action"
+        type: string
+      draft:
+        description: "Create the pull request as draft"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          HEAD_BRANCH: ${{ inputs.head_branch }}
+          LABEL: ${{ inputs.label }}
+          PR_TITLE: ${{ inputs.title }}
+          PR_BODY: ${{ inputs.body }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          args=()
+          if [ "$DRAFT" = "true" ]; then
+            args+=(--draft)
+          fi
+          gh pr create \
+            -B "$BASE_BRANCH" \
+            -H "$HEAD_BRANCH" \
+            --label "$LABEL" \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            "${args[@]}"

@@ -1,0 +1,156 @@
+name: Update tool configuration (backend)
+
+on:
+  workflow_call:
+    inputs:
+      account_type:
+        description: "Prod or nonprod AWS account"
+        required: true
+        type: string
+      app_name:
+        description: "Application name"
+        required: true
+        type: string
+      aws_account_id:
+        description: "AWS account ID"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region"
+        required: true
+        type: string
+      env_type:
+        description: "Environment type, e.g. test, beta, prod"
+        required: true
+        type: string
+      github_env:
+        description: "GitHub environment name"
+        required: true
+        type: string
+      aws_role_name:
+        description: "Role name to assume in the target account"
+        required: false
+        default: "cad-github-actions-role"
+        type: string
+      timeout_minutes:
+        description: "Job timeout in minutes"
+        required: false
+        default: 30
+        type: number
+    outputs:
+      external-tool-id:
+        description: "External tool ID returned by lti-auto-configuration-action"
+        value: ${{ jobs.update.outputs.external-tool-id }}
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    environment: ${{ inputs.github_env }}
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      external-tool-id: ${{ steps.lti.outputs.external-tool-id }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
+          aws-region: ${{ inputs.aws_region }}
+      - run: echo AWS_STACK_PREFIX="${{ inputs.app_name }}-${{ inputs.env_type }}-${{ inputs.account_type }}" | tee -a $GITHUB_ENV
+      - run: echo FRONTEND_DOMAIN=$(aws cloudformation list-exports --query "Exports[?Name=='${{ env.AWS_STACK_PREFIX }}-bootstrap-frontend-domain'].Value" --output text) | tee -a $GITHUB_ENV
+      - run: echo BACKEND_DOMAIN=$(aws cloudformation list-exports --query "Exports[?Name=='${{ env.AWS_STACK_PREFIX }}-bootstrap-backend-domain'].Value" --output text) | tee -a $GITHUB_ENV
+      - run: jq '.frontend_url="https://" + $ENV.FRONTEND_DOMAIN | .backend_url="https://" + $ENV.BACKEND_DOMAIN | .secret=$ENV.SECRET' tool-config/${{ inputs.env_type }}-template.json > tool-config/default.json
+        env:
+          SECRET: ${{ secrets.SECRET }}
+      - name: Resolve tool-support credentials
+        env:
+          ACCOUNT_TYPE: ${{ inputs.account_type }}
+          CANVAS_HOST_VAR: ${{ vars.CANVAS_HOST }}
+          TOOL_SUPPORT_URL_VAR: ${{ vars.TOOL_SUPPORT_URL }}
+          CANVAS_TOKEN_SECRET: ${{ secrets.CANVAS_TOKEN }}
+          TOOL_SUPPORT_USERNAME_SECRET: ${{ secrets.TOOL_SUPPORT_USERNAME }}
+          TOOL_SUPPORT_PASSWORD_SECRET: ${{ secrets.TOOL_SUPPORT_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$CANVAS_HOST_VAR" ] && [ -n "$TOOL_SUPPORT_URL_VAR" ] && [ -n "$CANVAS_TOKEN_SECRET" ] && [ -n "$TOOL_SUPPORT_USERNAME_SECRET" ] && [ -n "$TOOL_SUPPORT_PASSWORD_SECRET" ]; then
+            CANVAS_HOST="$CANVAS_HOST_VAR"
+            TOOL_SUPPORT_URL="$TOOL_SUPPORT_URL_VAR"
+            CANVAS_TOKEN="$CANVAS_TOKEN_SECRET"
+            TOOL_SUPPORT_USERNAME="$TOOL_SUPPORT_USERNAME_SECRET"
+            TOOL_SUPPORT_PASSWORD="$TOOL_SUPPORT_PASSWORD_SECRET"
+          else
+            secret_id="${ACCOUNT_TYPE}/lti-config"
+            secret_json="$(aws secretsmanager get-secret-value --secret-id "$secret_id" --query SecretString --output text)"
+            CANVAS_HOST="$(jq -r '.canvas_host // empty' <<<"$secret_json")"
+            TOOL_SUPPORT_URL="$(jq -r '.tool_support_url // empty' <<<"$secret_json")"
+            CANVAS_TOKEN="$(jq -r '.canvas_token // empty' <<<"$secret_json")"
+            TOOL_SUPPORT_USERNAME="$(jq -r '.tool_support_username // empty' <<<"$secret_json")"
+            TOOL_SUPPORT_PASSWORD="$(jq -r '.tool_support_password // empty' <<<"$secret_json")"
+          fi
+
+          for name in CANVAS_HOST TOOL_SUPPORT_URL CANVAS_TOKEN TOOL_SUPPORT_USERNAME TOOL_SUPPORT_PASSWORD; do
+            value="${!name}"
+            if [ -z "$value" ] || [ "$value" = "null" ]; then
+              echo "Missing required tool-support setting: $name" >&2
+              exit 1
+            fi
+          done
+
+          for value in "$CANVAS_TOKEN" "$TOOL_SUPPORT_USERNAME" "$TOOL_SUPPORT_PASSWORD"; do
+            echo "::add-mask::$value"
+          done
+
+          {
+            printf 'CANVAS_HOST=%s\n' "$CANVAS_HOST"
+            printf 'TOOL_SUPPORT_URL=%s\n' "$TOOL_SUPPORT_URL"
+            printf 'CANVAS_TOKEN=%s\n' "$CANVAS_TOKEN"
+            printf 'TOOL_SUPPORT_USERNAME=%s\n' "$TOOL_SUPPORT_USERNAME"
+            printf 'TOOL_SUPPORT_PASSWORD=%s\n' "$TOOL_SUPPORT_PASSWORD"
+          } >> "$GITHUB_ENV"
+      - name: Deploy tool configuration
+        id: lti
+        uses: oxctl/lti-auto-configuration-action@v1
+        with:
+          mode: deploy
+          canvas-url: ${{ env.CANVAS_HOST }}
+          tool-support-url: ${{ env.TOOL_SUPPORT_URL }}
+          canvas-token: ${{ env.CANVAS_TOKEN }}
+          tool-support-username: ${{ env.TOOL_SUPPORT_USERNAME }}
+          tool-support-password: ${{ env.TOOL_SUPPORT_PASSWORD }}
+      - run: echo CLIENT_ID="${{ steps.lti.outputs.client-id }}" | tee -a $GITHUB_ENV
+      - name: Update stack with new client ID
+        run: |
+          set -euo pipefail
+          parameters="$(aws cloudformation describe-stacks --stack-name ${{ env.AWS_STACK_PREFIX }}-backend --query "Stacks[].Parameters[].ParameterKey" --output text |\
+            tr '\t' '\n' |\
+            sed -n '/jwtAudience/! s/\(.*\)/ParameterKey=\1,UsePreviousValue=true/p' |\
+            tr '\n' ' '
+          ) ParameterKey=jwtAudience,ParameterValue=$CLIENT_ID"
+
+          set +e
+          output="$(aws cloudformation update-stack --stack-name ${{ env.AWS_STACK_PREFIX }}-backend --use-previous-template --capabilities CAPABILITY_NAMED_IAM --parameters $parameters 2>&1)"
+          status=$?
+          set -e
+
+          echo "$output"
+          if [ "$status" -ne 0 ]; then
+            if echo "$output" | grep -q "No updates are to be performed"; then
+              echo "STACK_UPDATED=false" >> "$GITHUB_ENV"
+            else
+              exit "$status"
+            fi
+          else
+            echo "STACK_UPDATED=true" >> "$GITHUB_ENV"
+          fi
+      - run: |
+          if [ "${STACK_UPDATED}" = "false" ]; then
+            echo "Skipping stack-update-complete wait because no update was performed."
+          else
+            aws cloudformation wait stack-update-complete --stack-name ${{ env.AWS_STACK_PREFIX }}-backend
+          fi
