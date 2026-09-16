@@ -149,9 +149,6 @@ on:
 jobs:
   frontend-ci:
     uses: oxctl/shared-workflows/.github/workflows/frontend_ci.yml@master
-    with:
-      working_directory: frontend
-      node_version_file: frontend/.nvmrc
 ```
 
 ### Backend CI wrapper example
@@ -167,9 +164,6 @@ on:
 jobs:
   backend-ci:
     uses: oxctl/shared-workflows/.github/workflows/backend_ci.yml@master
-    with:
-      working_directory: backend
-      java_version_file: backend/.java-version
 ```
 
 ### AWS template validation wrapper example

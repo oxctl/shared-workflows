@@ -16,14 +16,6 @@ on:
         required: false
         default: "cad-github-actions-role"
         type: string
-      template_paths:
-        description: "Comma or newline separated list of CloudFormation template paths"
-        required: false
-        default: |
-          aws/stack.yaml
-          aws/bootstrap.yaml
-          aws/s3-and-cloudfront.yaml
-        type: string
       timeout_minutes:
         description: "Job timeout in minutes"
         required: false
@@ -44,14 +36,8 @@ jobs:
           role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
           aws-region: ${{ inputs.aws_region }}
       - name: Validate CloudFormation templates
-        env:
-          TEMPLATE_PATHS: ${{ inputs.template_paths }}
         run: |
-          printf '%s\n' "$TEMPLATE_PATHS" \
-            | tr ',' '\n' \
-            | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
-            | sed '/^$/d' \
-            | while IFS= read -r template; do
-                echo "Validating $template"
-                aws cloudformation validate-template --template-body "file://$template"
-              done
+          for template in ./aws/*.yaml; do
+            echo "Validating $template"
+            aws cloudformation validate-template --template-body "file://$template"
+          done
