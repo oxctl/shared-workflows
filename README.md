@@ -4,6 +4,8 @@ Reusable GitHub Actions workflows shared across CAD repos.
 
 ## Workflows
 
+### Shared
+
 - `ado_comment.yml`
 - `frontend_build_and_deploy.yml`
 - `backend_build_and_deploy.yml`
@@ -16,6 +18,10 @@ Reusable GitHub Actions workflows shared across CAD repos.
 - `aws_ci.yml`
 - `delete_stack.yml`
 - `release.yml`
+
+### Util
+
+- `create_shared_workflows_release.yml`
 
 ## Usage
 
@@ -220,3 +226,11 @@ jobs:
       base_branch: release
       head_branch: master
 ```
+
+### Create shared-workflows SemVer release (manual dispatch)
+
+In this repository, run **Actions → "Create shared workflows release"** and choose:
+
+- `bump`: `patch`, `minor`, or `major`
+
+The workflow creates and pushes the next `vX.Y.Z` tag, always moves the matching major floating tag (`vN`) to that new release, and publishes a GitHub Release with generated notes.
