@@ -1,0 +1,92 @@
+name: Create shared workflows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "SemVer bump to apply"
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: shared-workflows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Calculate next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          git fetch --tags --force
+          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          version_without_prefix="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$version_without_prefix"
+
+          case "$BUMP" in
+            patch)
+              patch=$((patch + 1))
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+          esac
+
+          new_tag="v${major}.${minor}.${patch}"
+          floating_tag="v${major}"
+
+          if git rev-parse -q --verify "refs/tags/${new_tag}" >/dev/null; then
+            echo "Tag ${new_tag} already exists." >&2
+            exit 1
+          fi
+
+          {
+            echo "latest_tag=${latest_tag}"
+            echo "new_tag=${new_tag}"
+            echo "floating_tag=${floating_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create and push release tag
+        env:
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          git tag -a "$NEW_TAG" -m "Release $NEW_TAG"
+          git push origin "refs/tags/$NEW_TAG"
+
+      - name: Move major floating tag
+        env:
+          MAJOR_TAG: ${{ steps.version.outputs.floating_tag }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          release_commit="$(git rev-list -n 1 "$NEW_TAG")"
+          git tag -f "$MAJOR_TAG" "$release_commit"
+          git push --force origin "refs/tags/$MAJOR_TAG"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+        run: |
+          gh release create "$NEW_TAG" \
+            --verify-tag \
+            --title "$NEW_TAG" \
+            --generate-notes
