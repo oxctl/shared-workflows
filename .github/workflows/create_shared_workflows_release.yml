@@ -26,6 +26,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set the author of the release
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+
       - name: Calculate next version
         id: version
         env:
