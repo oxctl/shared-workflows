@@ -11,6 +11,12 @@ on:
         description: "Environment"
         required: true
         type: string
+      external-tool-id:
+        description: "External tool ID to substitute into deployment test path"
+        required: false
+        type: string
+        default: ''
+
 
 jobs:
   deployment-tests:
@@ -22,7 +28,6 @@ jobs:
     env:
       CANVAS_HOST: ${{ vars.CANVAS_HOST }}
       OAUTH_TOKEN: ${{ secrets.DEPLOYMENT_TESTS_OAUTH_TOKEN }}
-      TEST_PATH: ${{ vars.DEPLOYMENT_TEST_PATH }}
       BACKEND_URL: ${{ vars.BACKEND_URL }}
     defaults:
       run:
@@ -38,6 +43,16 @@ jobs:
           cache-dependency-path: '**/package-lock.json'
       - run: npm ci
       - run: npm run install-browsers
+      - name: Set deployment test path
+        env:
+          DEPLOYMENT_TEST_PATH_TEMPLATE: ${{ vars.DEPLOYMENT_TEST_PATH }}
+          EXTERNAL_TOOL_ID: ${{ inputs.external-tool-id }}
+        run: |
+          test_path="$DEPLOYMENT_TEST_PATH_TEMPLATE"
+          if [ -n "$EXTERNAL_TOOL_ID" ]; then
+            test_path="${test_path//\{external-tool-id\}/$EXTERNAL_TOOL_ID}"
+          fi
+          echo "TEST_PATH=$test_path" >> "$GITHUB_ENV"
       - run: npm test
       - name: Upload test-results
         uses: actions/upload-artifact@v7
