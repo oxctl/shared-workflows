@@ -12,6 +12,7 @@ Reusable GitHub Actions workflows shared across CAD repos.
 - `update-config-fe.yml`
 - `update-config-be.yml`
 - `get-update-config-be-inputs.yml`
+- `deploy.yml`
 - `test_deployment.yml`
 - `frontend_ci.yml`
 - `backend_ci.yml`
@@ -41,58 +42,47 @@ jobs:
       ado_personal_token: ${{ secrets.ADO_PERSONAL_TOKEN }}
 ```
 
-### Frontend/backend example
+### Full deployment
+
+The app repository owns the triggers and GitHub environments. The shared
+deployment workflow resolves `aws/<env_type>.json` from the app repository,
+then enters the selected GitHub environment before either service can change
+AWS (waiting for approval when required reviewers are configured). It builds
+and deploys both services, updates the backend configuration, and runs
+deployment tests on the default or release branch.
 
 ```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      env_type:
+        type: choice
+        required: true
+        options: [beta, prod]
+
 jobs:
-  call-frontend-build-and-deploy:
-    uses: oxctl/shared-workflows/.github/workflows/frontend_build_and_deploy.yml@master
+  deploy:
+    uses: oxctl/shared-workflows/.github/workflows/deploy.yml@master
+    permissions:
+      contents: read
+      id-token: write
     with:
-      account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
-      app_name: ${{ fromJSON(needs.aws-params.outputs.json).appName }}
-      aws_account_id: ${{ fromJSON(needs.aws-params.outputs.json).awsAccountId }}
-      aws_parameters: ${{ (startsWith(github.ref_name, 'dr-')) && 'dr' || github.ref_name }}
-      aws_region: ${{ fromJSON(needs.aws-params.outputs.json).awsRegion }}
-      env_type: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-      github_env: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-      ref: ${{ github.ref }}
-      sha: ${{ github.sha }}
-      execution-environment: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-    secrets: inherit
-
-  call-backend-build-and-deploy:
-    uses: oxctl/shared-workflows/.github/workflows/backend_build_and_deploy.yml@master
-    with:
-      account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
-      app_name: ${{ fromJSON(needs.aws-params.outputs.json).appName }}
-      aws_account_id: ${{ fromJSON(needs.aws-params.outputs.json).awsAccountId }}
-      aws_parameters: ${{ (startsWith(github.ref_name, 'dr-')) && 'dr' || github.ref_name }}
-      aws_region: ${{ fromJSON(needs.aws-params.outputs.json).awsRegion }}
-      env_type: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-      github_env: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-      ref: ${{ github.ref }}
-      sha: ${{ github.sha }}
-    secrets: inherit
-
-  call-update-config:
-    uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@master
-    needs: [aws-params, call-frontend-build-and-deploy, call-backend-build-and-deploy]
-    with:
-      account_type: ${{ fromJSON(needs.aws-params.outputs.json).accountType }}
-      app_name: ${{ fromJSON(needs.aws-params.outputs.json).appName }}
-      aws_account_id: ${{ fromJSON(needs.aws-params.outputs.json).awsAccountId }}
-      aws_region: ${{ fromJSON(needs.aws-params.outputs.json).awsRegion }}
-      env_type: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-      github_env: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
-    secrets: inherit
-
-  call-deployment-tests:
-    uses: oxctl/shared-workflows/.github/workflows/test_deployment.yml@master
-    needs: [aws-params, call-frontend-build-and-deploy, call-backend-build-and-deploy, call-update-config]
-    with:
-      execution-environment: ${{ fromJSON(needs.aws-params.outputs.json).envType }}
+      env_type: ${{ inputs.env_type }}
     secrets: inherit
 ```
+
+Set `github_env` if the GitHub environment name differs from `env_type`, or
+`aws_parameters` to use another file under `aws/` (for example, `dr` selects
+`aws/dr.json`). The called jobs select that GitHub environment to read
+`VITE_SENTRY_DSN`, `VITE_SENTRY_ENV`, `CANVAS_HOST`, `TOOL_SUPPORT_URL`,
+`DEPLOYMENT_TEST_PATH`, and `BACKEND_URL` from environment variables. Set
+`DEPLOYMENT_TESTS_OAUTH_TOKEN`, `CANVAS_TOKEN`, `TOOL_SUPPORT_USERNAME`,
+`TOOL_SUPPORT_PASSWORD`, and `SECRET` as secrets in the app
+repository/environment as needed. The backend configuration can read the
+tool-support credentials from AWS Secrets Manager when they are absent.
+The caller must pass secrets (for example with `secrets: inherit`); they are
+forwarded to the nested workflows. The calling job grants `id-token: write`
+and `contents: read` permissions for the AWS jobs.
 
 ### Frontend-only update-config example
 
@@ -110,6 +100,7 @@ jobs:
     uses: oxctl/shared-workflows/.github/workflows/update-config-fe.yml@master
     with:
       env_type: ${{ inputs.env_type }}
+    secrets: inherit
 ```
 
 ### Backend update-config dispatch with resolved inputs
@@ -132,6 +123,9 @@ jobs:
   call-update-config:
     needs: [resolve-inputs]
     uses: oxctl/shared-workflows/.github/workflows/update-config-be.yml@master
+    permissions:
+      contents: read
+      id-token: write
     with:
       account_type: ${{ needs.resolve-inputs.outputs.account_type }}
       app_name: ${{ needs.resolve-inputs.outputs.app_name }}

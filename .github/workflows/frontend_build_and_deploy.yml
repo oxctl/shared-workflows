@@ -6,37 +6,41 @@ on:
       account_type:
         description: 'Prod or nonprod AWS account'
         type: string
+        required: true
       app_name:
         description: 'The name of the app'
         type: string
       aws_account_id:
         description: 'The AWS account id'
         type: string
+        required: true
       aws_parameters:
         description: 'The AWS parameters'
         type: string
+        required: true
       aws_region:
         description: 'The AWS region'
         type: string
+        required: true
       env_type:
         description: 'The environment type, e.g. test, beta, prod'
         type: string
       execution-environment:
-        description: 'The GitHub environment to pull variables from'
+        description: 'The GitHub environment used for the build'
         type: string
       github_env:
-        description: 'The GitHub environment'
+        description: 'GitHub environment name; defaults to env_type'
         type: string
+        default: ''
       ref:
         description: 'The TAG ref'
         type: string
       sha:
         description: 'SHA of the TAG commit'
         type: string
-
 jobs:
   bootstrap:
-    concurrency: bootstrap-${{ inputs.github_env }}
+    concurrency: bootstrap-${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -73,11 +77,11 @@ jobs:
     needs: [ bootstrap ]
     runs-on: ubuntu-22.04
     timeout-minutes: 15
+    environment: ${{ inputs['execution-environment'] != '' && inputs['execution-environment'] || inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     # This is needed for AWS assume role
     permissions:
       id-token: write
       contents: read
-    environment: ${{ inputs.execution-environment }}
     env:
       COMMIT_SHA: ${{ inputs.sha }}
       TAG_REF: ${{ inputs.ref }}
@@ -133,7 +137,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     needs: [ build, bootstrap ]
-    concurrency: frontend-${{ inputs.github_env }}
+    concurrency: frontend-${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     # This is needed for AWS assume role
     permissions:
       id-token: write
