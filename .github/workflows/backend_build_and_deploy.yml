@@ -33,7 +33,7 @@ on:
 
 jobs:
   bootstrap:
-    concurrency: bootstrap-${{ inputs.github_env }}
+    concurrency: bootstrap-${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
@@ -138,7 +138,7 @@ jobs:
     timeout-minutes: 50
     runs-on: ubuntu-22.04
     needs: [ build, bootstrap ]
-    concurrency: backend-${{ inputs.github_env }}
+    concurrency: backend-${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     # This is needed for AWS assume role
     permissions:
       id-token: write

@@ -24,8 +24,9 @@ on:
         required: true
         type: string
       github_env:
-        description: "GitHub environment name"
-        required: true
+        description: "GitHub environment name; defaults to env_type"
+        required: false
+        default: ""
         type: string
       aws_role_name:
         description: "Role name to assume in the target account"
@@ -46,7 +47,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.timeout_minutes }}
-    environment: ${{ inputs.github_env }}
+    environment: ${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     permissions:
       id-token: write
       contents: read
