@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       github_env:
-        description: "GitHub environment name. Defaults to env_type when omitted."
+        description: "GitHub environment name; defaults to env_type"
         required: false
         default: ""
         type: string

@@ -1,0 +1,88 @@
+name: Build, deploy and test
+
+on:
+  workflow_call:
+    inputs:
+      env_type:
+        description: "Environment type used to select AWS parameters"
+        required: true
+        type: string
+      github_env:
+        description: "GitHub environment name; defaults to the resolved env_type"
+        required: false
+        default: ""
+        type: string
+      aws_parameters:
+        description: "Optional AWS parameters file stem under aws/; defaults to env_type"
+        required: false
+        default: ""
+        type: string
+    outputs:
+      external-tool-id:
+        description: "External tool ID returned by lti-auto-configuration-action"
+        value: ${{ jobs.update-config.outputs.external-tool-id }}
+
+jobs:
+  resolve-inputs:
+    uses: ./.github/workflows/get-update-config-be-inputs.yml
+    with:
+      env_type: ${{ inputs.env_type }}
+      github_env: ${{ inputs.github_env }}
+      aws_parameters_path: ${{ inputs.aws_parameters != '' && format('aws/{0}.json', inputs.aws_parameters) || '' }}
+
+  # Gate both service workflows before their bootstrap jobs can modify AWS.
+  # Environment protection on the frontend build alone would run too late.
+  approve:
+    needs: resolve-inputs
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-inputs.outputs.github_env }}
+    steps:
+      - run: echo "Deployment approved"
+
+  frontend:
+    needs: [resolve-inputs, approve]
+    uses: ./.github/workflows/frontend_build_and_deploy.yml
+    with:
+      account_type: ${{ needs.resolve-inputs.outputs.account_type }}
+      app_name: ${{ needs.resolve-inputs.outputs.app_name }}
+      aws_account_id: ${{ needs.resolve-inputs.outputs.aws_account_id }}
+      aws_parameters: ${{ needs.resolve-inputs.outputs.aws_parameters }}
+      aws_region: ${{ needs.resolve-inputs.outputs.aws_region }}
+      env_type: ${{ needs.resolve-inputs.outputs.env_type }}
+      github_env: ${{ needs.resolve-inputs.outputs.github_env }}
+      ref: ${{ github.ref }}
+      sha: ${{ github.sha }}
+    secrets: inherit
+
+  backend:
+    needs: [resolve-inputs, approve]
+    uses: ./.github/workflows/backend_build_and_deploy.yml
+    with:
+      account_type: ${{ needs.resolve-inputs.outputs.account_type }}
+      app_name: ${{ needs.resolve-inputs.outputs.app_name }}
+      aws_account_id: ${{ needs.resolve-inputs.outputs.aws_account_id }}
+      aws_parameters: ${{ needs.resolve-inputs.outputs.aws_parameters }}
+      aws_region: ${{ needs.resolve-inputs.outputs.aws_region }}
+      env_type: ${{ needs.resolve-inputs.outputs.env_type }}
+      github_env: ${{ needs.resolve-inputs.outputs.github_env }}
+      ref: ${{ github.ref }}
+      sha: ${{ github.sha }}
+
+  update-config:
+    needs: [resolve-inputs, frontend, backend]
+    uses: ./.github/workflows/update-config-be.yml
+    with:
+      account_type: ${{ needs.resolve-inputs.outputs.account_type }}
+      app_name: ${{ needs.resolve-inputs.outputs.app_name }}
+      aws_account_id: ${{ needs.resolve-inputs.outputs.aws_account_id }}
+      aws_region: ${{ needs.resolve-inputs.outputs.aws_region }}
+      env_type: ${{ needs.resolve-inputs.outputs.env_type }}
+      github_env: ${{ needs.resolve-inputs.outputs.github_env }}
+    secrets: inherit
+
+  test-deployment:
+    needs: [resolve-inputs, update-config]
+    uses: ./.github/workflows/test_deployment.yml
+    with:
+      execution-environment: ${{ needs.resolve-inputs.outputs.github_env }}
+    secrets: inherit
