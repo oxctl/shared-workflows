@@ -85,4 +85,5 @@ jobs:
     uses: ./.github/workflows/test_deployment.yml
     with:
       execution-environment: ${{ needs.resolve-inputs.outputs.github_env }}
+      external-tool-id: ${{ needs.update-config.outputs.external-tool-id }}
     secrets: inherit
