@@ -3,6 +3,23 @@ name: Update tool configuration (frontend)
 on:
   workflow_call:
     inputs:
+      account_type:
+        description: "Prod or nonprod AWS account"
+        required: true
+        type: string
+      aws_account_id:
+        description: "AWS account ID"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region"
+        required: true
+        type: string
+      aws_role_name:
+        description: "Role name to assume in the target account"
+        required: false
+        default: "cad-github-actions-role"
+        type: string
       env_type:
         description: "Environment type, e.g. beta or prod"
         required: true
@@ -33,11 +50,16 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     environment: ${{ inputs.github_env != '' && inputs.github_env || inputs.env_type }}
     permissions:
+      id-token: write
       contents: read
     outputs:
       external-tool-id: ${{ steps.lti.outputs.external-tool-id }}
     steps:
       - uses: actions/checkout@v6
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.aws_role_name }}
+          aws-region: ${{ inputs.aws_region }}
       - name: Prepare tool config
         env:
           ENV_TYPE: ${{ inputs.env_type }}
@@ -53,13 +75,40 @@ jobs:
             exit 1
           fi
           cp "$config_path" tool-config/default.json
+      - name: Load update-config secrets from AWS Secrets Manager
+        run: |
+          secret_id="${{ inputs.account_type }}/lti-config"
+          secret_json="$(aws secretsmanager get-secret-value --secret-id "$secret_id" --query SecretString --output text)"
+          
+          CANVAS_HOST="$(jq -r '.canvas_host' <<<"$secret_json")"
+          TOOL_SUPPORT_URL="$(jq -r '.tool_support_url' <<<"$secret_json")"
+          CANVAS_TOKEN="$(jq -r '.canvas_token' <<<"$secret_json")"
+          TOOL_SUPPORT_USERNAME="$(jq -r '.tool_support_username' <<<"$secret_json")"
+          TOOL_SUPPORT_PASSWORD="$(jq -r '.tool_support_password' <<<"$secret_json")"
+          for value in \
+            "$CANVAS_TOKEN" \
+            "$TOOL_SUPPORT_USERNAME" \
+            "$TOOL_SUPPORT_PASSWORD"
+          do
+            if [ -n "$value" ] && [ "$value" != "null" ]; then
+              echo "::add-mask::$value"
+            fi
+          done
+          
+          {
+            printf 'CANVAS_HOST=%s\n' "$CANVAS_HOST"
+            printf 'TOOL_SUPPORT_URL=%s\n' "$TOOL_SUPPORT_URL"
+            printf 'CANVAS_TOKEN=%s\n' "$CANVAS_TOKEN"
+            printf 'TOOL_SUPPORT_USERNAME=%s\n' "$TOOL_SUPPORT_USERNAME"
+            printf 'TOOL_SUPPORT_PASSWORD=%s\n' "$TOOL_SUPPORT_PASSWORD"
+          } >> "$GITHUB_ENV"
       - name: Deploy tool configuration
         id: lti
         uses: oxctl/lti-auto-configuration-action@v1
         with:
           mode: deploy
-          canvas-url: ${{ vars.CANVAS_HOST }}
-          tool-support-url: ${{ vars.TOOL_SUPPORT_URL }}
-          canvas-token: ${{ secrets.CANVAS_TOKEN }}
-          tool-support-username: ${{ secrets.TOOL_SUPPORT_USERNAME }}
-          tool-support-password: ${{ secrets.TOOL_SUPPORT_PASSWORD }}
+          canvas-url: ${{ env.CANVAS_HOST }}
+          tool-support-url: ${{ env.TOOL_SUPPORT_URL }}
+          canvas-token: ${{ env.CANVAS_TOKEN }}
+          tool-support-username: ${{ env.TOOL_SUPPORT_USERNAME }}
+          tool-support-password: ${{ env.TOOL_SUPPORT_PASSWORD }}
