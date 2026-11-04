@@ -68,7 +68,11 @@ jobs:
       ref: ${{ github.ref }}
       sha: ${{ github.sha }}
 
+  # DR (dr-* branch) runs skip tool configuration and deployment tests because
+  # the secrets they read don't exist in the DR region. The resolved env_type
+  # can't be used here as DR resolves to the prod environment type.
   update-config:
+    if: ${{ !startsWith(github.ref_name, 'dr-') }}
     needs: [resolve-inputs, frontend, backend]
     uses: ./.github/workflows/update-config-be.yml
     with:
@@ -81,6 +85,7 @@ jobs:
     secrets: inherit
 
   test-deployment:
+    if: ${{ !startsWith(github.ref_name, 'dr-') }}
     needs: [resolve-inputs, update-config]
     uses: ./.github/workflows/test_deployment.yml
     with:
