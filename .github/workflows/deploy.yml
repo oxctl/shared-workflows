@@ -17,6 +17,11 @@ on:
         required: false
         default: ""
         type: string
+      skip_update_and_tests:
+        description: "Skip the update-config and test-deployment jobs, e.g. for DR where the secrets they read don't exist"
+        required: false
+        default: false
+        type: boolean
     outputs:
       external-tool-id:
         description: "External tool ID returned by lti-auto-configuration-action"
@@ -68,11 +73,8 @@ jobs:
       ref: ${{ github.ref }}
       sha: ${{ github.sha }}
 
-  # DR (dr-* branch) runs skip tool configuration and deployment tests because
-  # the secrets they read don't exist in the DR region. The resolved env_type
-  # can't be used here as DR resolves to the prod environment type.
   update-config:
-    if: ${{ !startsWith(github.ref_name, 'dr-') }}
+    if: ${{ !inputs.skip_update_and_tests }}
     needs: [resolve-inputs, frontend, backend]
     uses: ./.github/workflows/update-config-be.yml
     with:
@@ -85,7 +87,7 @@ jobs:
     secrets: inherit
 
   test-deployment:
-    if: ${{ !startsWith(github.ref_name, 'dr-') }}
+    if: ${{ !inputs.skip_update_and_tests }}
     needs: [resolve-inputs, update-config]
     uses: ./.github/workflows/test_deployment.yml
     with:

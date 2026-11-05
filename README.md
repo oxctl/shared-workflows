@@ -84,11 +84,11 @@ The caller must pass secrets (for example with `secrets: inherit`); they are
 forwarded to the nested workflows. The calling job grants `id-token: write`
 and `contents: read` permissions for the AWS jobs.
 
-Runs from a `dr-*` branch (disaster recovery) skip the `update-config` and
-`test-deployment` jobs, as the secrets they read don't exist in the DR region.
-This is detected from the caller's branch name (`github.ref_name`), not from
-`env_type`, since DR typically resolves to `prod`. The `external-tool-id`
-output is empty for these runs.
+Set `skip_update_and_tests: true` to skip the `update-config` and
+`test-deployment` jobs. Use this for disaster recovery (DR) runs, as the secrets
+those jobs read don't exist in the DR region. The caller decides when to set it,
+for example `skip_update_and_tests: ${{ startsWith(github.ref_name, 'dr-') }}`.
+The `external-tool-id` output is empty when they are skipped.
 
 ### Frontend-only update-config example
 
