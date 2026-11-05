@@ -17,6 +17,11 @@ on:
         required: false
         default: ""
         type: string
+      skip_update_and_tests:
+        description: "Skip the update-config and test-deployment jobs, e.g. for DR where the secrets they read don't exist"
+        required: false
+        default: false
+        type: boolean
     outputs:
       external-tool-id:
         description: "External tool ID returned by lti-auto-configuration-action"
@@ -69,6 +74,7 @@ jobs:
       sha: ${{ github.sha }}
 
   update-config:
+    if: ${{ !inputs.skip_update_and_tests }}
     needs: [resolve-inputs, frontend, backend]
     uses: ./.github/workflows/update-config-be.yml
     with:
@@ -81,6 +87,7 @@ jobs:
     secrets: inherit
 
   test-deployment:
+    if: ${{ !inputs.skip_update_and_tests }}
     needs: [resolve-inputs, update-config]
     uses: ./.github/workflows/test_deployment.yml
     with:
