@@ -39,5 +39,4 @@ jobs:
           ado-personal-token: ${{ secrets.ado_personal_token }}
 
       - name: Log the ADO API response
-        if: success()
         run: echo "${{ steps.post-ado-comment.outputs.api-response }}"
