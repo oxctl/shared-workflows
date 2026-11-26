@@ -37,3 +37,6 @@ jobs:
           ado-project: ${{ inputs.ado_project }}
           ado-username: ${{ secrets.ado_username }}
           ado-personal-token: ${{ secrets.ado_personal_token }}
+
+      - name: Log the ADO API response
+        run: echo "${{ steps.post-ado-comment.outputs.api-response }}"
